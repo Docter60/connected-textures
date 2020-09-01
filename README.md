@@ -7,6 +7,10 @@ Program *attempts* to generate seamless connected tile textures using two provid
 ---
 Fourteen connected textures are created based on two images.  Generation of each texture is run on their own thread for increased efficiency.  Using normal distributions and walking algorithms, samples are randomly generated for calculating a gradient.  The algorithm only accepts a sample array that begins and ends with samples at most 1 unit away from each other.  This constraint helps with seamless connection when repeating the same tile or another adjacent tile.  The samples are then used to create a gradient with matching width and height of the input images.  Values closer to 1.0 make the pixel biased towards the top image while values closer to 0.0 make the pixel biased towards the bottom image.  The samples provide the "halfway" line for when the gradient value is 0.5.  Finally, per-pixel blending is calculated and applied to the output image.  All threads are then closed and the program exits.
 
+If the input images both have alpha/gamma channels then the program will blend them as well.  Otherwise the image with the least amount of channels determines the output channel count.
+
+A default settings file will be created in the current working directory if one isn't specified on the command line. **NOTE:** If a settings file is specified but does not have all the settings defined, a default value will be set.
+
 Not every output image looks perfect...**yet**. Keep repeating the command until you find one that looks good.
 <br /><br />
 Required command options:
