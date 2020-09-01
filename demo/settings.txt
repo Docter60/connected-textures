@@ -1,0 +1,14 @@
+The parser only looks for lines with equal signs, so comments can exist.
+Spaces are allowed, but no new line whitespace.
+
+The amount of samples the program will use in a walking gradient
+sampleCount = 65
+
+Where the walking gradient will start the halfway seam
+seamHeight = 32
+
+The reach of the gradient's blending in pixels using euclidean distance
+steepness = 5
+
+The amplification applied to the walking gradient algorithm
+variance = 3
