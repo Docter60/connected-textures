@@ -10,6 +10,7 @@ DEPS := $(OBJECTS:%.o=%.d)
 EXECUTABLE := ct
 HIDE := @
 
+.PHONY: all clean test
 
 all: $(EXECUTABLE)
 	$(HIDE)echo Done.
@@ -35,4 +36,4 @@ clean:
 	$(HIDE)echo Done.
 
 test:
-	./ct -t test/white128.png -b test/black128.png -o res/out128.png
+	$(shell ./ct -t test/white128.png -b test/black128.png -o test/out128.png)
