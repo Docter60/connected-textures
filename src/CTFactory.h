@@ -7,15 +7,16 @@
 
 #include <filesystem>
 
-#define cimg_display 0
-#define cimg_use_png 1
-#include "CImg.h"
+namespace cimg_library {
+    template<typename T>
+    struct CImg;
+}
 
-#include "WalkingGradient.h"
+class WalkingGradient;
 
 namespace fs = std::filesystem;
-using namespace cimg_library;
 
+using namespace cimg_library;
 
 /**
  * Definition of the CTSettings struct

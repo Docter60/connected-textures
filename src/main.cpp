@@ -3,6 +3,7 @@
  * 
  * Main file holding the entry main function for the connected textures program
  */
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <getopt.h>
@@ -11,7 +12,6 @@
 #include <unordered_map>
 
 #include "CTFactory.h"
-#include "WalkingGradient.h"
 
 namespace fs = std::filesystem;
 
