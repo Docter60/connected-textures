@@ -1,7 +1,13 @@
 .vscode/
+.vs/
+bin/
 obj/
 
 /settings.txt
 debug_walking_gradient.png
 
-ct
+Makefile
+ct.make
+*.sln
+*.vcxproj
+*vcxproj.user

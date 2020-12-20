@@ -8,29 +8,13 @@
 #include <iostream>
 #include <thread>
 
-#define cimg_display 0
-#define cimg_use_png 1
-#include "CImg.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include "WalkingGradient.h"
-
-/**
- * Attempts to load an image from a file path
- * 
- * @param im pointer to a CImg object to load the image into
- * @param p the image file path
- */
-static CImg<unsigned char>* initImage(const fs::path& p) {
-    CImg<unsigned char>* im = nullptr;
-    try {
-        im = new CImg<unsigned char>(p.c_str());
-        return im;
-    } catch(const CImgIOException&) {
-        std::cerr << "Could not initialize image at " << p << std::endl;
-        std::cerr << "The file either doesn't exist or the file format is invalid." << std::endl;
-    }
-    return nullptr;
-}
 
 
 /**
@@ -41,7 +25,7 @@ static CImg<unsigned char>* initImage(const fs::path& p) {
  * @param isCorner if the desired gradient should be a corner piece, otherwise edge piece
  */
 static WGSettings getWGS(const CTSettings& props, int width, int height, bool isCorner) {
-    WGSettings wgs;
+    WGSettings wgs = WGSettings();
     wgs.sampleCount = props.sampleCount;
     wgs.width = width;
     wgs.height = height;
@@ -53,15 +37,33 @@ static WGSettings getWGS(const CTSettings& props, int width, int height, bool is
 }
 
 CTFactory::CTFactory(const fs::path& topImagePath, const fs::path& bottomImagePath, const fs::path& outImagePath, const CTSettings& props) : props(props) {
-    if((topImage = initImage(topImagePath)) == nullptr) return;
-    if((bottomImage = initImage(bottomImagePath)) == nullptr) return;
-    inWidth = topImage->width();
-    inHeight = topImage->height();
-    channels = std::min(topImage->spectrum(), bottomImage->spectrum());
-    outImage = new CImg<unsigned char>(topImage->width() * 5,
-                                       topImage->height() * 3,
-                                       topImage->depth(),
-                                       channels);
+    
+    topImage.pixels = stbi_load(topImagePath.string().c_str(), &topImage.x, &topImage.y, &topImage.c, 0);
+    bottomImage.pixels = stbi_load(bottomImagePath.string().c_str(), &bottomImage.x, &bottomImage.y, &bottomImage.c, 0);
+
+    // Check if top image could be loaded
+    if (topImage.pixels == nullptr) {
+        std::cerr << "Could not load top image" << std::endl;
+        return;
+    }
+
+    // Check if bottom image could be loaded
+    if (bottomImage.pixels == nullptr) {
+        std::cerr << "Could not load bottom image" << std::endl;
+        return;
+    }
+
+    // Check if images have same dimensions
+    if (topImage.x != bottomImage.x || topImage.y != bottomImage.y) {
+        std::cerr << "Top and bottom images do not share the same dimensions" << std::endl;
+        return;
+    }
+
+
+    outImage.x = topImage.x * OUTPUT_TILE_WIDTH;
+    outImage.y = topImage.y * OUTPUT_TILE_HEIGHT;
+    outImage.c = (topImage.c < bottomImage.c) ? topImage.c : bottomImage.c;
+    outImage.pixels = new unsigned char[outImage.x * outImage.y * outImage.c]();
 
     std::thread ne_thread(&CTFactory::generateNETile, this);
     std::thread nw_thread(&CTFactory::generateNWTile, this);
@@ -76,7 +78,7 @@ CTFactory::CTFactory(const fs::path& topImagePath, const fs::path& bottomImagePa
     std::thread se_inv_thread(&CTFactory::generateSEInverseTile, this);
     std::thread sw_inv_thread(&CTFactory::generateSWInverseTile, this);
 
-    applyBaseTile(true, inWidth, inHeight);
+    applyBaseTile(true, topImage.x, topImage.y);
 
     ne_thread.join();
     nw_thread.join();
@@ -91,60 +93,70 @@ CTFactory::CTFactory(const fs::path& topImagePath, const fs::path& bottomImagePa
     se_inv_thread.join();
     sw_inv_thread.join();
 
-    outImage->save(outImagePath.c_str());
+    stbi_write_png(outImagePath.string().c_str(), outImage.x, outImage.y, outImage.c, outImage.pixels, 0);
 }
 
 CTFactory::~CTFactory() {
-    delete topImage;
-    delete bottomImage;
-    delete outImage;
-    topImage = nullptr;
-    bottomImage = nullptr;
-    outImage = nullptr;
+    if (topImage.pixels != nullptr)
+        stbi_image_free(topImage.pixels);
+    topImage.pixels = nullptr;
+    if (bottomImage.pixels != nullptr)
+        stbi_image_free(bottomImage.pixels);
+    bottomImage.pixels = nullptr;
+    if (outImage.pixels != nullptr) {
+        delete[] outImage.pixels;
+        outImage.pixels = nullptr;
+    }
 }
 
 void CTFactory::applyTileBlend(const WalkingGradient& g, int xOffset, int yOffset, bool inverse) {
-    CImg<unsigned char>& t_im = inverse ? *bottomImage : *topImage;
-    CImg<unsigned char>& b_im = inverse ? *topImage : *bottomImage;
-    CImg<unsigned char>& o_im = *outImage;
-    int yIn = 0, yOut = yOffset, xIn = 0, xOut = xOffset;
-    for(; yIn < inHeight; ++yIn, ++yOut) {
-        for(; xIn < inWidth; ++xIn, ++xOut) {
-            float r = g.getValue(xIn, yIn);
-            float ir = 1.0 - r;
-            for(int c = 0; c < channels; ++c) {
-                o_im(xOut, yOut, 0, c) = (unsigned char)(ir * (float)t_im(xIn, yIn, 0, c) + r * (float)b_im(xIn, yIn, 0, c));
+    const ImageData& tData = !inverse ? topImage : bottomImage;
+    const ImageData& bData = !inverse ? bottomImage : topImage;
+    unsigned char* o_im = outImage.pixels;
+
+    for (int y = 0; y < tData.y; ++y) {
+        int yOut = yOffset + y;
+        for (int x = 0; x < tData.x; ++x) {
+            int xOut = xOffset + x;
+            int outInd = (yOut * outImage.x + xOut) * outImage.c;
+            int t_inInd = (y * tData.x + x) * tData.c;
+            int b_inInd = (y * bData.x + x) * bData.c;
+            float r = g.getValue(x, y);
+            float ir = 1.f - r;
+            for (int c = 0; c < outImage.c; ++c) {
+                o_im[outInd + c] = (unsigned char)(ir * (float)tData.pixels[t_inInd + c] + r * (float)bData.pixels[b_inInd + c]);
             }
         }
-        xIn = 0;
-        xOut = xOffset;
     }
 }
 
 void CTFactory::applyBaseTile(bool useTopImage, int xOffset, int yOffset) {
-    CImg<unsigned char>& t_im = useTopImage ? *topImage : *bottomImage;
-    CImg<unsigned char>& o_im = *outImage;
-    int yIn = 0, yOut = yOffset, xIn = 0, xOut = xOffset;
-    for(; yIn < inHeight; ++yIn, ++yOut) {
-        for(; xIn < inWidth; ++xIn, ++xOut) {
-            for(int c = 0; c < channels; ++c) {
-                o_im(xOut, yOut, 0, c) = t_im(xIn, yIn, 0, c);
+    const ImageData& im = useTopImage ? topImage : bottomImage;
+    unsigned char* t_im = im.pixels;
+    unsigned char *o_im = outImage.pixels;
+    
+    for (int y = 0; y < im.y; ++y) {
+        int yOut = yOffset + y;
+        for (int x = 0; x < im.x; ++x) {
+            int xOut = xOffset + x;
+            int outInd = (yOut * outImage.x + xOut) * outImage.c;
+            int inInd = (y * im.x + x) * im.c;
+            for (int c = 0; c < outImage.c; ++c) {
+                o_im[outInd + c] = t_im[inInd + c];
             }
         }
-        xIn = 0;
-        xOut = xOffset;
     }
 }
 
 void CTFactory::generateNETile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
     wg.flipY();
-    applyTileBlend(wg, 2 * inWidth, 0);
+    applyTileBlend(wg, 2 * topImage.x, 0);
 }
 
 void CTFactory::generateNWTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
     wg.flipX();
     wg.flipY();
@@ -152,70 +164,70 @@ void CTFactory::generateNWTile() {
 }
 
 void CTFactory::generateSETile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
-    applyTileBlend(wg, 2 * inWidth, 2 * inHeight);
+    applyTileBlend(wg, 2 * topImage.x, 2 * topImage.y);
 }
 
 void CTFactory::generateSWTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
     wg.flipX();
-    applyTileBlend(wg, 0, 2 * inHeight);
+    applyTileBlend(wg, 0, 2 * topImage.y);
 }
 
 void CTFactory::generateNTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, false);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, false);
     WalkingGradient wg(wgs);
     wg.flipY();
-    applyTileBlend(wg, inWidth, 0);
+    applyTileBlend(wg, topImage.x, 0);
 }
 
 void CTFactory::generateSTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, false);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, false);
     WalkingGradient wg(wgs);
-    applyTileBlend(wg, inWidth, 2 * inHeight);
+    applyTileBlend(wg, topImage.x, 2 * topImage.y);
 }
 
 void CTFactory::generateETile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, false);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, false);
     WalkingGradient wg(wgs);
     wg.transpose();
-    applyTileBlend(wg, 2 * inWidth, inHeight);
+    applyTileBlend(wg, 2 * topImage.x, topImage.y);
 }
 
 void CTFactory::generateWTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, false);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, false);
     WalkingGradient wg(wgs);
     wg.transpose();
     wg.flipX();
-    applyTileBlend(wg, 0, inHeight);
+    applyTileBlend(wg, 0, topImage.y);
 }
 
 void CTFactory::generateNEInverseTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
     wg.flipY();
-    applyTileBlend(wg, 4 * inWidth, 0, true);
+    applyTileBlend(wg, 4 * topImage.x, 0, true);
 }
 
 void CTFactory::generateNWInverseTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
     wg.flipX();
     wg.flipY();
-    applyTileBlend(wg, 3 * inWidth, 0, true);
+    applyTileBlend(wg, 3 * topImage.x, 0, true);
 }
 
 void CTFactory::generateSEInverseTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
-    applyTileBlend(wg, 4 * inWidth, inHeight, true);
+    applyTileBlend(wg, 4 * topImage.x, topImage.y, true);
 }
 
 void CTFactory::generateSWInverseTile() {
-    WGSettings wgs = getWGS(props, inWidth, inHeight, true);
+    WGSettings wgs = getWGS(props, topImage.x, topImage.y, true);
     WalkingGradient wg(wgs);
     wg.flipX();
-    applyTileBlend(wg, 3 * inWidth, inHeight, true);
+    applyTileBlend(wg, 3 * topImage.x, topImage.y, true);
 }

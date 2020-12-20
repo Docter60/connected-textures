@@ -27,21 +27,21 @@ Optional command options:
 ## Getting Started
 ---
 ### Limitations
-* PNG files only
-* Input images must be the same size
+* Input files must be supported by stb_image
+* Input images must have the same width and height
 * Single-connection textures are **not** generated
 * This program assumes you have already made the base tiles seamless
 
 ### Dependencies
 
-* g++ compiler with c++17 standard
-* libpng, libz
-* CImg header
+* premake5 for creating solution or makefile
+* glm as git submodule
 
-### Installing
-* Download the CImg header (link in Acknowledgements) and place it either in the project's src folder or in a default include folder recognized by gnu compilers (like /usr/include)
-* `cd` into project directory
-* Run `make`
+### Building
+* Creating project files requires premake5. Install premake if not installed already.
+* Install glm as a git submodule by running `git submodule init` and then `git submodule update`
+* Either use generate scripts or use premake on command line to create project files
+* Build the executable using either make or visual studio
 
 ### Executing program
 
@@ -66,12 +66,17 @@ You can view an example settings file in the [demo](https://github.com/docter60/
 
 ## Testing
 ---
-A simple test command is provided in the makefile.  Run `make test` to run the test on files in the test directory.
+Test images are provided in the test folder. From the repository directory, run this command on Windows:
+```
+.\bin\Debug\ct.exe -t test\white128.png -b test\black128.png -o test\out128.png
+```
+Or this command on linux:
+```
+./bin/Debug/ct -t test/white128.png -b test/black128.png -o test/out128.png
+```
 <br /><br /><br />
 
-## FAQ
----
-
 ## Acknowledgments
-
-* Uses the [CImg](http://www.cimg.eu/) header
+---
+* Uses [stb_image](https://github.com/nothings/stb) and [stb_image_write](https://github.com/nothings/stb)
+* Uses [glm](https://github.com/g-truc/glm)

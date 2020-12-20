@@ -12,8 +12,8 @@
  * Settings used to generate a walking gradient
  */
 struct WGSettings {
-    int width, height, sampleCount, seamHeight;
-    float variance, steepness;
+    int width, height, sampleCount;
+    float seamHeight, variance, steepness;
     bool isCorner;
 };
 

@@ -7,16 +7,10 @@
 
 #include <filesystem>
 
-namespace cimg_library {
-    template<typename T>
-    struct CImg;
-}
-
 class WalkingGradient;
 
 namespace fs = std::filesystem;
 
-using namespace cimg_library;
 
 /**
  * Definition of the CTSettings struct
@@ -30,6 +24,11 @@ struct CTSettings {
     float seamHeight;
 };
 
+struct ImageData {
+    unsigned char* pixels = nullptr;
+    int x = 0, y = 0, c = 0;
+};
+
 
 /**
  * Definition of the CTFactory class
@@ -38,6 +37,8 @@ struct CTSettings {
  */
 class CTFactory {
     public:
+        const unsigned char OUTPUT_TILE_WIDTH = 5;
+        const unsigned char OUTPUT_TILE_HEIGHT = 3;
 
         /**
          * CTFactory constructor
@@ -58,9 +59,8 @@ class CTFactory {
         virtual ~CTFactory();
     
     private:
-        CImg<unsigned char> *topImage = nullptr, *bottomImage = nullptr, *outImage = nullptr;
+        ImageData topImage, bottomImage, outImage;
         CTSettings props;
-        int inWidth, inHeight, channels;
 
         /**
          * Uses color blending to apply a connected texture to the output image

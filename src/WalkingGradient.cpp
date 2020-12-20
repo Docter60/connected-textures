@@ -15,11 +15,14 @@
 #include <cmath>
 #include <random>
 
-#define cimg_display 0
-#define cimg_use_png 1
-#include "CImg.h"
+#include "stb_image_write.h"
 
-using namespace cimg_library;
+#ifndef M_PI_2
+#define M_PI_2 3.14159265358979323846 / 2.0
+#endif
+#ifndef M_PI_4
+#define M_PI_4 3.14159265358979323846 / 4.0
+#endif
 
 
 /**
@@ -72,7 +75,7 @@ static glm::vec2* generateCornerSamples(const WGSettings& wgs) {
     std::default_random_engine generator;
     std::normal_distribution<float> distribution(0.0f, 0.5f);
 
-    float width_ratio = M_PI_2 / (float)(sampleCount - 1);
+    float width_ratio = M_PI_2 / (sampleCount - 1.0);
     do {
         seed = std::chrono::system_clock::now().time_since_epoch().count();
         generator.seed(seed);
@@ -88,7 +91,7 @@ static glm::vec2* generateCornerSamples(const WGSettings& wgs) {
 
 static float generateEdgeGradientPixel(glm::vec2* samples, int x, int y, const WGSettings& wgs) {
     float dw = wgs.width * wgs.height;
-    glm::vec2 v = {x, y}, currentPoint, closestPoint;
+    glm::vec2 v = { x, y }, currentPoint, closestPoint = {0.f, 0.f};
     for(int i = 1; i < wgs.sampleCount; ++i) {
         currentPoint = glm::closestPointOnLine(v, samples[i], samples[i - 1]);
         float d = glm::distance(v, currentPoint);
@@ -145,7 +148,7 @@ static void generateCornerGradient(float *data, const WGSettings& wgs) {
         eSamples[i] = euclidean(samples[i]);
     }
 
-    delete samples;
+    delete[] samples;
     samples = nullptr;
 
     for(int y = 0; y < wgs.height; ++y) {
@@ -155,7 +158,7 @@ static void generateCornerGradient(float *data, const WGSettings& wgs) {
         }
     }
 
-    delete eSamples;
+    delete[] eSamples;
 }
 
 static void generateGradient(float *data, const WGSettings& wgs) {
@@ -227,12 +230,13 @@ void WalkingGradient::transpose() {
 }
 
 void WalkingGradient::debug() const {
-    CImg<unsigned char> test(width, height);
+    unsigned char* test = new unsigned char[width * height]();
     for(int y = 0; y < height; ++y) {
         int yOffset = y * width;
         for(int x = 0; x < width; ++x) {
-            test(x, y) = (unsigned char)(255.0 * data[yOffset + x]);
+            test[yOffset + x] = (unsigned char)(255.0 * data[yOffset + x]);
         }
     }
-    test.save("debug_walking_gradient.png");
+    stbi_write_png("debug_walking_gradient.png", width, height, 1, test, 0);
+    delete[] test;
 }

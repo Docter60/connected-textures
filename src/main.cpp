@@ -6,11 +6,11 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <getopt.h>
 #include <iostream>
 #include <string>
 #include <unordered_map>
 
+#include "dr_opt.h"
 #include "CTFactory.h"
 
 namespace fs = std::filesystem;
@@ -77,44 +77,46 @@ static void parseSettingsFile(const fs::path& settingsFilePath, std::unordered_m
  * Main entry point of the program
  */
 int main(int argc, char* args[]) {
+    dr::setopt(argc, args);
     // Check for correct number of options/arguments
-    int optCounnt = argc - optind;
-    if(optCounnt != 6 && optCounnt != 8) {
+    int optCount = dr::getoptc();
+    if(optCount < 3) {
         printUsage();
         return 0;
     }
 
     // Load in options/arguments
-    int c;
     bool tFlag = false, bFlag = false, oFlag = false;
     fs::path topImagePath;
     fs::path bottomImagePath;
     fs::path outImagePath;
     fs::path settingsPath;
-    while((c = getopt(argc, args, "t:b:o:s:")) != -1) {
-        switch(c) {
-            case 't':
-            topImagePath = fs::path(optarg);
-            tFlag = true;
-            break;
-            case 'b':
-            bottomImagePath = fs::path(optarg);
-            bFlag = true;
-            break;
-            case 'o':
-            outImagePath = fs::path(optarg);
-            if(!fs::is_directory(outImagePath.parent_path())) {
-                std::cerr << "Path to " << outImagePath << " does not exist." << std::endl;
-                return 0;
-            }
-            oFlag = true;
-            break;
-            case 's':
-            settingsPath = fs::path(optarg);
-            break;
-            default:
-            break;
+
+    // Get top image path
+    if (dr::hasopt("t")) {
+        topImagePath = fs::path(dr::getopt("t"));
+        tFlag = true;
+    }
+
+    // Get bottom image path
+    if (dr::hasopt("b")) {
+        bottomImagePath = fs::path(dr::getopt("b"));
+        bFlag = true;
+    }
+
+    // Get output image path
+    if (dr::hasopt("o")) {
+        outImagePath = fs::path(dr::getopt("o"));
+        if (!fs::is_directory(outImagePath.parent_path())) {
+            std::cerr << "Path to " << outImagePath << " does not exist." << std::endl;
+            return 0;
         }
+        oFlag = true;
+    }
+
+    // Get settings path
+    if (dr::hasopt("s")) {
+        settingsPath = fs::path(dr::getopt("s"));
     }
 
     // If required options weren't loaded, exit program
@@ -143,7 +145,7 @@ int main(int argc, char* args[]) {
     parseSettingsFile(settingsPath, settings);
 
     // Load settings into CTSettings object, default if no property found in file
-    CTSettings cts;
+    CTSettings cts = CTSettings();
     auto it = settings.find("sampleCount");
     if(it != settings.end()) {
         cts.sampleCount = std::stoi(it->second);
